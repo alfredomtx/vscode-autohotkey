@@ -418,7 +418,7 @@ export class DocumentService {
         });
     }
 
-    private include2Path(rawPath: string, scriptPath: string): Maybe<string> {
+    public include2Path(rawPath: string, scriptPath: string): Maybe<string> {
         const scriptDir = scriptPath;
         const normalized = normalize(rawPath);
         switch (extname(normalized)) {
