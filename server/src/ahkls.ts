@@ -113,16 +113,9 @@ export class AHKLS
 
     private logger: ILoggerBase;
 
-    private _documentService: DocumentService;
+    public readonly documentService: DocumentService;
     // text document manager
     private documents: TextDocuments<TextDocument>;
-
-    /**
-     * Get the document service for external access (e.g., file watching)
-     */
-    public get documentService(): DocumentService {
-        return this._documentService;
-    }
 
     private ioService: IoService;
 
@@ -145,7 +138,7 @@ export class AHKLS
         this.finder = new ScriptASTFinder();
         this.logger = logger;
         this.documents = new TextDocuments(TextDocument);
-        this._documentService = new DocumentService(conn, this.documents, logger, this.v2CompatibleMode);
+        this.documentService = new DocumentService(conn, this.documents, logger, this.v2CompatibleMode);
         this.ioService = new IoService();
         this.configurationService = config;
 
