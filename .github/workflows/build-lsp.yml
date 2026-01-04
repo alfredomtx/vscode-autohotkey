@@ -1,0 +1,46 @@
+name: Build and Release LSP Server
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'server/**'
+      - '.github/workflows/build-lsp.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Bundle with esbuild
+        run: |
+          npm install -g esbuild
+          esbuild server/out/server.js --bundle --platform=node --target=node18 --outfile=server.bundle.js
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: lsp-v0.4.0
+          name: LSP Server v0.4.0
+          files: server.bundle.js
+          body: |
+            AutoHotkey Language Server for Zed editor.
+
+            This release is automatically built from the latest server/ changes.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
