@@ -69,6 +69,29 @@ suite('Should do definition', () => {
 			'Should navigate to the included file'
 		);
 	});
+
+	test('Navigate to #Include file with trailing comment', async () => {
+		// Arrange
+		const expectedTargetUri = getDocUri('included_lib.ahk');
+		// Line 3 has: #Include included_lib.ahk ; with trailing comment
+		const position = new vscode.Position(3, 10);
+
+		// Act
+		await activate(includeTestUri);
+		const actualDefinition = (await vscode.commands.executeCommand(
+			'vscode.executeDefinitionProvider',
+			includeTestUri,
+			position
+		)) as vscode.Location[];
+
+		// Assert
+		assert.strictEqual(actualDefinition.length, 1, 'Should return exactly one definition');
+		assert.strictEqual(
+			actualDefinition[0].uri.fsPath,
+			expectedTargetUri.fsPath,
+			'Should navigate to the included file despite trailing comment'
+		);
+	});
 });
 
 async function testDefinition(

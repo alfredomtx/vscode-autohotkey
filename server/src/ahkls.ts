@@ -439,7 +439,12 @@ export class AHKLS
         const lineText = docinfo.getLine(position.line);
         const includeMatch = lineText.match(/^\s*#include[,]?\s*/i);
         if (includeMatch) {
-            const rawPath = lineText.slice(includeMatch[0].length).trim();
+            let rawPath = lineText.slice(includeMatch[0].length).trim();
+            // Strip trailing comment (AHK requires space before ;)
+            const commentIndex = rawPath.indexOf(' ;');
+            if (commentIndex !== -1) {
+                rawPath = rawPath.substring(0, commentIndex).trim();
+            }
             const docPath = URI.parse(textDocument.uri).fsPath;
             const docDir = dirname(docPath);
             const resolvedPath = this.documentService.include2Path(rawPath, docDir);
