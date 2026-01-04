@@ -19,6 +19,7 @@ import {
     TextDocumentSyncKind,
     DidChangeConfigurationNotification,
     DocumentSymbolParams,
+    WorkspaceSymbolParams,
     SignatureHelpParams,
     CancellationToken,
     DefinitionParams,
@@ -112,9 +113,16 @@ export class AHKLS
 
     private logger: ILoggerBase;
 
-    private documentService: DocumentService;
+    private _documentService: DocumentService;
     // text document manager
     private documents: TextDocuments<TextDocument>;
+
+    /**
+     * Get the document service for external access (e.g., file watching)
+     */
+    public get documentService(): DocumentService {
+        return this._documentService;
+    }
 
     private ioService: IoService;
 
@@ -130,12 +138,14 @@ export class AHKLS
 
     private currentDocUri: string = '';
 
+    private workspaceRoot: string | undefined;
+
 	constructor(conn: Connection, logger: ILoggerBase, config: ConfigurationService) {
         this.conn = conn;
         this.finder = new ScriptASTFinder();
         this.logger = logger;
         this.documents = new TextDocuments(TextDocument);
-        this.documentService = new DocumentService(conn, this.documents, logger, this.v2CompatibleMode);
+        this._documentService = new DocumentService(conn, this.documents, logger, this.v2CompatibleMode);
         this.ioService = new IoService();
         this.configurationService = config;
 
@@ -145,6 +155,7 @@ export class AHKLS
         this.conn.onInitialize(this.onInitialize.bind(this));
         this.conn.onInitialized(this.onInitialized.bind(this));
         this.conn.onDocumentSymbol(this.onDocumentSymbol.bind(this));
+        this.conn.onWorkspaceSymbol(this.onWorkspaceSymbol.bind(this));
         this.conn.onSignatureHelp(this.onSignatureHelp.bind(this));
         this.conn.onDefinition(this.onDefinition.bind(this));
         this.conn.onHover(this.onHover.bind(this));
@@ -176,7 +187,7 @@ export class AHKLS
 
     private onInitialize(params: InitializeParams) {
         let capabilities = params.capabilities;
-    
+
         // Does the client support the `workspace/configuration` request?
         // If not, we fall back using global settings.
         const hasConfigurationCapability = !!(
@@ -190,12 +201,21 @@ export class AHKLS
             capabilities.textDocument.publishDiagnostics &&
             capabilities.textDocument.publishDiagnostics.relatedInformation
         );
-    
+
+        // Extract workspace root for workspace-wide indexing
+        if (params.workspaceFolders && params.workspaceFolders.length > 0) {
+            this.workspaceRoot = URI.parse(params.workspaceFolders[0].uri).fsPath;
+        } else if (params.rootUri) {
+            this.workspaceRoot = URI.parse(params.rootUri).fsPath;
+        } else if (params.rootPath) {
+            this.workspaceRoot = params.rootPath;
+        }
+
         const clientCapability: IClientCapabilities = {
             hasConfiguration: hasConfigurationCapability,
             hasWorkspaceFolder: hasWorkspaceFolderCapability
         }
-    
+
         this.logger.info('initializing.');
         // Update configuration of each service
         this.configurationService.updateCapabilities(clientCapability);
@@ -221,6 +241,7 @@ export class AHKLS
                 },
                 hoverProvider: true,
                 documentSymbolProvider: true,
+                workspaceSymbolProvider: true,
                 definitionProvider: true,
                 semanticTokensProvider: {
                     legend: {
@@ -254,6 +275,21 @@ export class AHKLS
                 this.logger.info('Workspace folder change event received.');
             });
         }
+
+        // Trigger workspace-wide symbol indexing
+        if (this.workspaceRoot) {
+            this.documentService.setWorkspaceRoot(this.workspaceRoot);
+            this.logger.info(`Scanning workspace: ${this.workspaceRoot}`);
+            this.documentService.scanWorkspace((processed, total) => {
+                if (processed % 50 === 0 || processed === total) {
+                    this.logger.info(`Indexing: ${processed}/${total} files`);
+                }
+            }).then(() => {
+                this.logger.info(`Workspace indexing complete. ${this.documentService.workspaceIndex.indexedFileCount} files indexed.`);
+            }).catch(err => {
+                this.logger.error(`Workspace indexing failed: ${err}`);
+            });
+        }
     }
 
     @logException
@@ -261,6 +297,51 @@ export class AHKLS
         const info = this.documentService.getDocumentInfo(params.textDocument.uri);
         if (!info) return [];
         return info.syntax.table.symbolInformations();
+    }
+
+    @logException
+    private async onWorkspaceSymbol(params: WorkspaceSymbolParams): Promise<SymbolInformation[]> {
+        const query = params.query.toLowerCase();
+        const results: SymbolInformation[] = [];
+
+        // Get symbols from workspace index
+        const workspaceSymbols = this.documentService.workspaceIndex.getAllSymbols(query);
+        for (const entry of workspaceSymbols) {
+            const symbol = entry.symbol;
+            // Skip symbols without range (e.g., builtin symbols)
+            if (!symbol.range) continue;
+
+            // Determine symbol kind based on type
+            let kind: SymbolKind = SymbolKind.Variable;
+            if (symbol instanceof AHKMethodSymbol) {
+                kind = SymbolKind.Method;
+            } else if (symbol instanceof AHKObjectSymbol) {
+                kind = SymbolKind.Class;
+            } else if (symbol instanceof VariableSymbol) {
+                kind = SymbolKind.Variable;
+            }
+
+            results.push({
+                name: symbol.name,
+                kind: kind,
+                location: {
+                    uri: entry.uri,
+                    range: symbol.range
+                }
+            });
+        }
+
+        // Also include symbols from open documents
+        for (const [uri, info] of this.documentService.getAllDocumentInfo()) {
+            const docSymbols = info.syntax.table.symbolInformations();
+            for (const sym of docSymbols) {
+                if (!query || sym.name.toLowerCase().includes(query)) {
+                    results.push(sym);
+                }
+            }
+        }
+
+        return results;
     }
 
     @logException
