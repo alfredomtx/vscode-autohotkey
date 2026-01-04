@@ -1,5 +1,9 @@
 # Visual Studio Code Autohotkey Simple Support
 
+## Fork Notice
+
+This fork is also used as the LSP server source for the [Zed AutoHotkey extension](https://github.com/alfredomtx/tree-sitter-autohotkey). Changes pushed to `server/` are automatically built and released via GitHub Actions.
+
 <div align="center">
 
 [![](https://img.shields.io/visual-studio-marketplace/i/helsmy.ahk-simple-ls?label=Extension%20Install&style=for-the-badge&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=helsmy.ahk-simple-ls) ![](https://img.shields.io/badge/Compatibility-autohotkey%201.1.33.10-green?style=for-the-badge&logo=autohotkey)  ![](https://img.shields.io/badge/partial%20support-autohotkey%202.0--beta3-yellow?style=for-the-badge&logo=autohotkey)  
