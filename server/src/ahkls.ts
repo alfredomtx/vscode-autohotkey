@@ -348,12 +348,27 @@ export class AHKLS
         if (cancellation.isCancellationRequested) {
             return undefined;
         }
-    
+
         let { textDocument, position } = params;
-        
+
         const docinfo = this.documentService.getDocumentInfo(textDocument.uri);
         if (!docinfo) return undefined;
-        
+
+        // Check if cursor is on an #Include line
+        const lineText = docinfo.getLine(position.line);
+        const includeMatch = lineText.match(/^\s*#include[,]?\s*/i);
+        if (includeMatch) {
+            const rawPath = lineText.slice(includeMatch[0].length).trim();
+            const docPath = URI.parse(textDocument.uri).fsPath;
+            const docDir = dirname(docPath);
+            const resolvedPath = this.documentService.include2Path(rawPath, docDir);
+            if (resolvedPath) {
+                const targetUri = URI.file(resolvedPath).toString();
+                return [Location.create(targetUri, Range.create(0, 0, 0, 0))];
+            }
+            return [];
+        }
+
         const symbol = this.getSymbolAtPosition(docinfo.syntax, position, Expr.Factor, Call);
         if (symbol === undefined) return undefined;
 
